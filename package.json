@@ -1,0 +1,19 @@
+{
+  "name": "oneHundredFourty",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.16.2",
+    "express": "^4.15.4",
+    "twit": "^2.2.9"
+  },
+  "scripts": {
+    "dev": "NODE_ENV=development nodemon",
+    "start": "node index.js"
+  },
+  "devDependencies": {
+    "dotenv-safe": "^4.0.4",
+    "nodemon": "^1.12.0"
+  }
+}

@@ -1,0 +1,4 @@
+node_modules/
+sandBox.js
+*.DS_Store
+.env
