@@ -34,31 +34,46 @@ mentionStream.on('tweet', (tweet) => {
 })
 
 function eventLookUp(content, ogUser){
+  console.log(content);
   let username = ogUser;
   let venueId = '';
   let venueCalendar = {};
   let params = screenTweets(content);
-  let searchBy = params.searchBy;
-  let searchVal = params.searchVal;
+    let searchBy = params.searchBy;
+    let searchVal = params.searchVal;
 
     // 	get search criteria from the tweet
     // find *venue place* and split it into an array to get the venue name
   function screenTweets(tweet){
-    let splitTweet = tweet.toLowerCase().match(/\*(.*?)\*/g)[0].replace(/\*+/g, '').split(' ');
-    return {
-      searchBy: splitTweet.shift(),
-      searchVal: splitTweet.reduce(function(a, b){
-        return a.concat(' ' + b);
-      })
-    };
+    let splitTweet = tweet.toLowerCase().match(/\*(.*?)\*/g);
+    if(splitTweet){
+      let paramVals = splitTweet[0].replace(/\*+/g, '').split(' ');
+      return {
+        searchBy: paramVals.shift(),
+        searchVal: paramVals.reduce(function(a, b){
+          return a.concat(' ' + b);
+        })
+      };
+    } else {
+      return{
+        searchBy: null,
+        searchVal: null
+      }
+    }
+
   }
 
   // ueses other functions to search for the venue in Songkick's venues and get the info to tweet back to a user
   function getEvents(){
-    Axios.get(`http://api.songkick.com/api/3.0/search/${searchBy}s.json?query=${searchVal}&apikey=${process.env.SONGKICK_KEY}&jsoncallback=`)
-    .then(getVenueId)
-    .then(getVenueCalendar)
-    .catch(logAxiosErr);
+    if(searchBy){
+      Axios.get(`http://api.songkick.com/api/3.0/search/${searchBy}s.json?query=${searchVal}&apikey=${process.env.SONGKICK_KEY}&jsoncallback=`)
+      .then(getVenueId)
+      .then(getVenueCalendar)
+      .catch(logAxiosErr);
+    } else {
+      respond();
+    }
+
   }
 
   // get the venue Id from the Songkick search results
@@ -96,15 +111,20 @@ function eventLookUp(content, ogUser){
     let showDay = `${today.getFullYear()}-${month}-${date}`
     let showsToday = shows.filter(function(show){
       if(show.start.date === showDay){
+        console.log(show);
           return show;
         }
       }).map(function(show){
-        return show.performace[0].displayName;
+        if(show){
+          return show.displayName;
+        } else {
+          respond();
+        }
       });
     if(showsToday.length > 0){
       return showsToday;
     } else {
-      return "i don't know. try another place?"
+      respond();
     }
   }
 
@@ -112,14 +132,29 @@ function eventLookUp(content, ogUser){
   // post a tweet with the day's show
   // get the initial user to reply to and pass that in with the show
   function respond(show){
+    let message = '';
+    if(show){
+     message = show;
+   } else {
+     message = 'Oops! something went wrong. Try again?';
+   }
     let params = {
-      status: '@' + username + ' ' + show,
+      status: '@' + username + ' ' + message,
     };
     T.post('statuses/update', params, function(err, data, response){
-          err ? console.log(err, response) : console.log(data.text);
+          err ? console.log(err) : console.log(data.text);
     })
    return;
   }
+  // function respond(){
+  //   let params = {
+  //     status: '@' + username + ' Oops! something went wrong. Try again?',
+  //   };
+  //   T.post('statuses/update', params, function(err, data, response){
+  //         err ? console.log(err, response) : console.log(data.text);
+  //   })
+  //  return;
+  // }
 
   getEvents();
 
