@@ -5,6 +5,7 @@ const path = require('path');
 const app = express();
 const Twit = require('twit');
 const Axios = require('axios');
+const util = require('util');
 const port = process.env.PORT || 8081;
 
 // initialize Twit
@@ -39,8 +40,9 @@ function eventLookUp(content, ogUser){
   let venueId = '';
   let venueCalendar = {};
   let params = screenTweets(content);
-    let searchBy = params.searchBy;
-    let searchVal = params.searchVal;
+  let searchBy = params.searchBy;
+  let searchVal = params.searchVal;
+  let somethingWrong = '@' + username + ' ' + 'No registered shows tonight (or something went wrong!)';
 
     // 	get search criteria from the tweet
     // find *venue place* and split it into an array to get the venue name
@@ -79,9 +81,15 @@ function eventLookUp(content, ogUser){
   // get the venue Id from the Songkick search results
   function getVenueId(response){
     let songkickRes = JSON.parse(response.data.slice([1], response.data.length - 2));
-    venueId = songkickRes.resultsPage.results.venue[0].id;
-    console.log('veueId: ' + venueId);
-    return venueId;
+    let venueData = songkickRes.resultsPage.results;
+    if(venueData.venue){
+      venueId = venueData.venue[0].id;
+      console.log('veueId: ' + venueId);
+      return venueId;
+    } else {
+      respond();
+    }
+
   }
 
   // run another request to songkick to get the venue's data
@@ -105,59 +113,90 @@ function eventLookUp(content, ogUser){
     // get the first couple of shows to use in the reply, loop over them and get the info you need
     // for each item, check to see if the day/time of the tweet matches the current day/time
     let shows = response.resultsPage.results.event;
-    let today = new Date();
-    let month = ("0" + (today.getMonth() + 1)).slice(-2);
-    let date = ("0" + today.getDate()).slice(-2);
-    let showDay = `${today.getFullYear()}-${month}-${date}`
-    let showsToday = shows.filter(function(show){
-      if(show.start.date === showDay){
-        console.log(show);
-          return show;
-        }
-      }).map(function(show){
-        if(show){
-          return show.displayName;
-        } else {
-          respond();
-        }
-      });
-    if(showsToday.length > 0){
-      return showsToday;
+    if(shows != undefined){
+      let today = new Date();
+      let month = ("0" + (today.getMonth() + 1)).slice(-2);
+      let date = ("0" + today.getDate()).slice(-2);
+      let showDay = `${today.getFullYear()}-${month}-${date}`
+      let showsToday = shows.filter(function(show){
+        if(show.start.date === showDay){
+            return show;
+          }
+        }).map(function(show){
+          if(show){
+            return show.displayName;
+          }
+        });
+      if(showsToday.length > 0){
+        console.log('shows today: ' + showsToday);
+        return showsToday;
+      } else {
+        return null;
+      }
     } else {
-      respond();
+      console.log('error in processCalendarData');
+      return null;
     }
   }
 
-
   // post a tweet with the day's show
   // get the initial user to reply to and pass that in with the show
+  // search to see if reply was already posted
+  // if it was, delete that tweet, then respond with message.
+  // if no tweet is found, still respond with the message
   function respond(show){
-    let message = '';
-    if(show){
-     message = show;
+    let lastErrId = '';
+    // if the venue has a show, reply with message containing show name
+    if(show != null){
+     let message = '@' + username + ' ' + show;
+     checkThenPost(message);
    } else {
-     message = 'Oops! something went wrong. Try again?';
+    //  if there is no show or something went wrong, reply with error message
+     let message = somethingWrong;
+     checkThenPost(message);
    }
-    let params = {
-      status: '@' + username + ' ' + message,
-    };
-    T.post('statuses/update', params, function(err, data, response){
-          err ? console.log(err) : console.log(data.text);
-    })
    return;
   }
-  // function respond(){
-  //   let params = {
-  //     status: '@' + username + ' Oops! something went wrong. Try again?',
-  //   };
-  //   T.post('statuses/update', params, function(err, data, response){
-  //         err ? console.log(err, response) : console.log(data.text);
-  //   })
-  //  return;
-  // }
+
+  function postReply(replyMessage){
+    let params = { status: replyMessage };
+    T.post('statuses/update', params, function(err, data, response){
+          err ? console.log('err at postReply()', err, data) : console.log('tweeted: ' + data.text);
+    })
+  }
+
+  function checkThenPost(replyMessage){
+    let params = { q: replyMessage };
+    // search for the duplicated tweet
+    T.get('search/tweets', params, function(err, data, response){
+      if(err){
+        console.log('err at status search: ', err);
+        postReply(replyMessage)
+      } else{
+        // if it exists, delete it then respond, it it doesn't still respond
+        if(data.statuses.length > 0){
+          let foundTweetId = data.statuses[0].id_str;
+          deleteAndPostReply(foundTweetId);
+        } else {
+          postReply(replyMessage);
+        }
+      }
+    })
+  }
+
+  function deleteAndPostReply(tweetId){
+    // if it exists, delete it then respond, it it doesn't still respond
+    T.post('statuses/destroy/:id', { id: tweetId }, function (err, data, response) {
+        console.log('deleted tweet: ', data.text);
+        if(err){
+          console.log(err);
+        } else{
+          postReply(data.text)
+        }
+    })
+  }
 
   getEvents();
-
   /// end eventLookUp
 }
 
